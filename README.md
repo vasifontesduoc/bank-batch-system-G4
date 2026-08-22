@@ -1,8 +1,9 @@
 # bank-batch-system-G4
 
-Proyecto desarrollado con **Spring Boot** y **Spring Batch** para procesar datos bancarios desde archivos CSV y almacenar los resultados en una base de datos MySQL.
+Proyecto desarrollado en **Spring Batch** para modernizar procesos batch del Banco XYZ.
 
 ## Tecnologías
+
 - Java 17
 - Spring Boot
 - Spring Batch
@@ -10,9 +11,16 @@ Proyecto desarrollado con **Spring Boot** y **Spring Batch** para procesar datos
 - Maven
 
 ## Procesos implementados
-- Reporte de Transacciones Diarias.
-- Cálculo de Intereses Mensuales.
-- Generación de Estados de Cuenta Anuales.
 
-## Resultado
-Se ejecutaron correctamente los tres Jobs del sistema, procesando la información de los archivos CSV y persistiendo los resultados en la base de datos `banco_xyz`.
+- Reporte de Transacciones Diarias
+- Cálculo de Intereses Mensuales
+- Generación de Estados de Cuenta Anuales
+
+## Características
+
+- Lectura de archivos CSV.
+- Procesamiento por chunks de 5 registros.
+- Ejecución paralela con 3 hilos.
+- Validación de datos con `ItemProcessor`.
+- Persistencia de resultados en MySQL.
+- Tolerancia a fallos mediante políticas de `skip`.
