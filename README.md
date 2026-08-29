@@ -42,15 +42,6 @@ Datos basados en: https://github.com/KariVillagran/bank_legacy_data
 
 **Rutas externas:** los resultados (`data/output/`, `data/backup/`) se generan fuera de `src/main/resources`, configurables vía `application.properties`, para no mezclar artefactos de ejecución con el jar empaquetado.
 
-## Cómo ejecutar
-
-```bash
-# Crear la base de datos
-mysql -u root -p -e "CREATE DATABASE banco_xyz;"
-
-# Compilar
-mvn clean package
-
 # Ejecutar cada Job por separado
 mvn spring-boot:run -Dspring-boot.run.arguments=--job=transacciones
 mvn spring-boot:run -Dspring-boot.run.arguments=--job=intereses
