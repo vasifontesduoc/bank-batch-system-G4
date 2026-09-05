@@ -1,55 +1,57 @@
 # Bank Batch System — Banco XYZ
 
-Migración de procesos batch legacy del Banco XYZ a **Spring Batch** — Semana 3, Desarrollo Backend III (PBY2203).
+Proyecto Spring Boot del Banco XYZ: procesos batch (Semana 3) + patrón BFF (Semana 4).
 
-## Objetivo
+## Semana 4 — Backend for Frontend (BFF)
 
-Modernizar tres procesos batch del banco con manejo robusto de errores y procesamiento paralelo:
+Se implementaron 3 backends independientes, cada uno adaptado a su cliente, sobre la misma base de datos generada por los Jobs batch.
 
-1. **Reporte de Transacciones Diarias** — valida transacciones, detecta anomalías y genera un resumen.
-2. **Cálculo de Intereses Mensuales** — aplica tasa según tipo de cuenta (ahorro/préstamo/hipoteca) y actualiza el saldo.
-3. **Estados de Cuenta Anuales** — compila los movimientos del año por cuenta y genera un informe de auditoría.
+### Estrategia elegida
 
-## Estructura del código
-config/ -> Jobs y Steps (transacciones, intereses)
-job/ -> Job de cuentas anuales (2 steps)
-reader/ -> Lectura de cada CSV
-processor/ -> Validación, normalización y detección de anomalías
-writer/ -> Persistencia en MySQL
-tasklet/ -> Compila el estado de cuenta anual consolidado
-listener/ -> Resumen de ejecución y trazabilidad de registros descartados
-exception/ -> Excepciones de negocio usadas por las políticas de skip
-model/ repository/ -> Entidades JPA y repositorios
+BFF por canal (Web/Móvil/Cajero), cada uno con sus propios endpoints, DTOs y reglas de autorización — pero dentro de la misma app Spring Boot (no microservicios separados), por tamaño y contexto del proyecto.
 
+### Los 3 BFF
 
-Datos basados en: https://github.com/KariVillagran/bank_legacy_data
+| Canal | Ruta base | Qué expone |
+|---|---|---|
+| **Web** | `/api/web/**` | Datos completos: estado de cuenta anual detallado, transacciones con anomalías, historial de intereses |
+| **Móvil** | `/api/mobile/**` | Payloads livianos: solo saldo y últimas transacciones (fecha/monto/tipo) |
+| **Cajero** | `/api/cajero/**` | Solo operaciones críticas: consultar saldo y retirar (con validación de fondos) |
 
-## Decisiones técnicas
+### Seguridad por canal
 
-**Tolerancia a fallos:** cada Step usa `.faultTolerant()` con excepciones de negocio propias (`TransaccionInvalidaException`, `InteresInvalidoException`, `CuentaInvalidaException`) para registros con datos inválidos (skip, hasta 600 en transacciones/intereses y 150 en cuentas anuales, dado que el dataset real trae ~48% de registros deliberadamente inválidos). Los errores técnicos/transitorios de BD se reintentan hasta 3 veces con backoff, en vez de descartarse.
+Autenticación por API Key en el header `X-API-KEY`. Cada key mapea a un rol (`ROLE_WEB`/`ROLE_MOBILE`/`ROLE_CAJERO`) y Spring Security exige el rol correcto según la ruta:
 
-**Anomalías:** se marcan (no se descartan) transacciones con monto ≤0 o ≥3000, quedando registradas en el resumen final del Job.
-
-**Escalamiento:** procesamiento multi-hilo (`ThreadPoolTaskExecutor`), configurable por `application.properties`. Se comparó 1 vs 3 vs 8 hilos sobre el mismo Job (~1000 registros):
-
-| Hilos | Tiempo |
+| Canal | Header |
 |---|---|
-| 1 | 697 ms |
-| **3** | **641 ms** |
-| 8 | 662 ms |
+| Web | `X-API-KEY: web-2024-xyz-key` |
+| Móvil | `X-API-KEY: mobile-2024-xyz-key` |
+| Cajero | `X-API-KEY: cajero-2024-xyz-key` |
 
-3 hilos resultó ser el óptimo — 8 hilos no mejora el resultado por el overhead de coordinación frente al volumen de datos.
+### Organización del código
 
-**Rutas externas:** los resultados (`data/output/`, `data/backup/`) se generan fuera de `src/main/resources`, configurables vía `application.properties`, para no mezclar artefactos de ejecución con el jar empaquetado.
+Por capa técnica (`controller/`, `service/`, `dto/`), con el canal explícito en el nombre de cada clase (`WebBffController`, `MobileBffService`, etc.) y los DTOs además separados por subcarpeta (`dto/web`, `dto/mobile`, `dto/cajero`) — misma convención que ya usa el resto del proyecto batch.
 
-# Ejecutar cada Job por separado
-mvn spring-boot:run -Dspring-boot.run.arguments=--job=transacciones
-mvn spring-boot:run -Dspring-boot.run.arguments=--job=intereses
-mvn spring-boot:run -Dspring-boot.run.arguments=--job=anual
+### Cómo probar
+
+```bash
+mvn spring-boot:run
 ```
 
-Ajusta usuario/contraseña de MySQL en `src/main/resources/application.properties` si no usas `root/password`.
+```bash
+# Web
+curl -H "X-API-KEY: web-2024-xyz-key" http://localhost:8080/api/web/cuentas/101/estado-anual
+
+# Móvil
+curl -H "X-API-KEY: mobile-2024-xyz-key" http://localhost:8080/api/mobile/cuentas/101/saldo
+
+# Cajero - saldo
+curl -H "X-API-KEY: cajero-2024-xyz-key" http://localhost:8080/api/cajero/cuentas/101/saldo
+
+# Cajero - retiro
+curl -X POST -H "X-API-KEY: cajero-2024-xyz-key" -H "Content-Type: application/json" \
+  -d '{"monto": 500}' http://localhost:8080/api/cajero/cuentas/101/retiro
 
 ## Evidencia de ejecución
 
-Capturas de consola de cada Job, comparación de hilos y consultas en MySQL con los datos almacenados están incluidas en el documento de entrega adjunto.
+Capturas de cada endpoint, la prueba de seguridad entre canales (403), validación de fondos insuficientes (409) y la verificación en MySQL de que el retiro persiste en la base de datos, están en el documento de entrega adjunto.
